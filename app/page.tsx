@@ -4,15 +4,30 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Tv } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { useRouter } from 'next/navigation';
 
 export default function Home() {
   const [activationCode, setActivationCode] = useState<string>('');
   const [qrUrl, setQrUrl] = useState<string>('');
-  const [expiresIn, setExpiresIn] = useState<number>(600); // 10 minutes in seconds
+  const [expiresIn, setExpiresIn] = useState<number>(86400); // 24 hours in seconds
+  const router = useRouter();
 
   useEffect(() => {
     const generateCode = async () => {
       try {
+        // Check localStorage first for an existing valid code
+        const storedCode = localStorage.getItem('tvActivationCode');
+        const storedExpiry = localStorage.getItem('tvActivationExpiry');
+        
+        if (storedCode && storedExpiry && new Date(storedExpiry).getTime() > Date.now()) {
+          setActivationCode(storedCode);
+          setQrUrl(`${window.location.origin}/auth/verify?code=${storedCode}`);
+          // Update expiration countdown
+          setExpiresIn(Math.floor((new Date(storedExpiry).getTime() - Date.now()) / 1000));
+          return;
+        }
+
+        // If no valid stored code, generate a new one
         const response = await fetch('/api/activation', {
           method: 'POST',
           headers: {
@@ -22,8 +37,16 @@ export default function Home() {
         });
         
         const data = await response.json();
-        setActivationCode(data.activationCode);
-        setQrUrl(`${window.location.origin}/auth/verify?code=${data.activationCode}`);
+        
+        if (data.activationCode) {
+          setActivationCode(data.activationCode);
+          setQrUrl(`${window.location.origin}/auth/verify?code=${data.activationCode}`);
+          
+          // Store the new code and its expiry
+          const expiryDate = new Date(Date.now() + 24 * 60 * 60 * 1000);
+          localStorage.setItem('tvActivationCode', data.activationCode);
+          localStorage.setItem('tvActivationExpiry', expiryDate.toISOString());
+        }
       } catch (error) {
         console.error('Failed to generate activation code:', error);
       }
@@ -39,8 +62,11 @@ export default function Home() {
         const response = await fetch(`/api/activation?code=${activationCode}`);
         const data = await response.json();
         
-        if (data.valid) {
-          window.location.href = '/profiles/create';
+        if (data.valid && data.isActivated) {
+          // Clear stored code once activated
+          localStorage.removeItem('tvActivationCode');
+          localStorage.removeItem('tvActivationExpiry');
+          router.push('/profiles');
         }
       } catch (error) {
         console.error('Failed to check activation status:', error);
@@ -51,8 +77,11 @@ export default function Home() {
     const countdownInterval = setInterval(() => {
       setExpiresIn((prev) => {
         if (prev <= 0) {
-          generateCode(); // Generate new code when expired
-          return 600;
+          // Clear expired code
+          localStorage.removeItem('tvActivationCode');
+          localStorage.removeItem('tvActivationExpiry');
+          generateCode();
+          return 86400;
         }
         return prev - 1;
       });
@@ -62,12 +91,13 @@ export default function Home() {
       clearInterval(pollInterval);
       clearInterval(countdownInterval);
     };
-  }, [activationCode]);
+  }, [activationCode, router]);
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -121,7 +151,7 @@ export default function Home() {
           transition={{ delay: 0.6 }}
           className="text-gray-400"
         >
-          Visit <span className="text-white font-medium">SITE AQUI</span> on your mobile device
+          Visit <span className="text-white font-medium">{window.location.origin}/auth/verify</span> on your mobile device
         </motion.p>
       </motion.div>
     </div>

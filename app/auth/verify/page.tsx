@@ -22,8 +22,6 @@ const formSchema = z.object({
   code: z.string().length(6, 'Activation code must be 6 characters'),
   email: z.string().email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
-  xtreamUsername: z.string().min(1, 'Xtream username is required'),
-  xtreamPassword: z.string().min(1, 'Xtream password is required'),
 });
 
 export default function VerifyPage() {
@@ -39,8 +37,6 @@ export default function VerifyPage() {
       code: codeFromQR || '',
       email: '',
       password: '',
-      xtreamUsername: '',
-      xtreamPassword: '',
     },
   });
 
@@ -50,37 +46,36 @@ export default function VerifyPage() {
     try {
       if (step === 1) {
         const response = await fetch(`/api/activation?code=${values.code}`);
-        if (response.ok) {
+        const data = await response.json();
+        
+        if (data.valid && !data.isActivated) {
           setStep(2);
+        } else if (data.valid && data.isActivated) {
+          form.setError('code', { message: 'Code already activated' });
+        } else {
+          form.setError('code', { message: 'Invalid or expired code' });
         }
       } else if (step === 2) {
-        const response = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: values.email,
-            password: values.password,
-          }),
-        });
-        if (response.ok) {
-          setStep(3);
-        }
-      } else if (step === 3) {
         const response = await fetch('/api/activation', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             code: values.code,
-            xtreamUsername: values.xtreamUsername,
-            xtreamPassword: values.xtreamPassword,
+            email: values.email,
+            password: values.password,
           }),
         });
+
         if (response.ok) {
-          router.push('/profiles/create');
+          router.push('/profiles');
+        } else {
+          const data = await response.json();
+          form.setError('root', { message: data.error });
         }
       }
     } catch (error) {
       console.error('Error:', error);
+      form.setError('root', { message: 'An unexpected error occurred' });
     } finally {
       setIsLoading(false);
     }
@@ -100,8 +95,6 @@ export default function VerifyPage() {
             <div className={step >= 1 ? 'text-blue-400' : ''}>Code</div>
             <ArrowRight className="w-4 h-4" />
             <div className={step >= 2 ? 'text-blue-400' : ''}>Account</div>
-            <ArrowRight className="w-4 h-4" />
-            <div className={step >= 3 ? 'text-blue-400' : ''}>Playlist</div>
           </div>
         </div>
 
@@ -181,50 +174,6 @@ export default function VerifyPage() {
                   />
                 </motion.div>
               )}
-
-              {step === 3 && (
-                <motion.div
-                  key="step3"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: -20 }}
-                  className="bg-gray-900/50 backdrop-blur-sm p-6 rounded-xl space-y-4"
-                >
-                  <FormField
-                    control={form.control}
-                    name="xtreamUsername"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-gray-400">Xtream Username</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            className="bg-gray-800 border-gray-700"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="xtreamPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-gray-400">Xtream Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="password"
-                            className="bg-gray-800 border-gray-700"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </motion.div>
-              )}
             </AnimatePresence>
 
             <Button
@@ -235,7 +184,7 @@ export default function VerifyPage() {
               {isLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin" />
               ) : (
-                step === 3 ? 'Complete Setup' : 'Continue'
+                step === 2 ? 'Complete Setup' : 'Continue'
               )}
             </Button>
           </form>

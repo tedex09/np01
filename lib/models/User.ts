@@ -43,10 +43,6 @@ const UserSchema = new Schema({
     type: String, // Encrypted credentials
     required: false
   },
-  activationCode: {
-    code: String,
-    expiresAt: Date
-  },
   viewingHistory: [{
     contentId: String,
     contentType: {
