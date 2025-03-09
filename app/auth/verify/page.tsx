@@ -1,55 +1,88 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import { Check, X } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Tv, ArrowRight, Loader2 } from 'lucide-react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form';
+
+const formSchema = z.object({
+  code: z.string().length(6, 'Activation code must be 6 characters'),
+  email: z.string().email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  xtreamUsername: z.string().min(1, 'Xtream username is required'),
+  xtreamPassword: z.string().min(1, 'Xtream password is required'),
+});
 
 export default function VerifyPage() {
-  const [code, setCode] = useState('');
-  const [isVerifying, setIsVerifying] = useState(false);
-  const [verificationStatus, setVerificationStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [step, setStep] = useState(1);
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const codeFromQR = searchParams.get('code');
 
-  const handleCodeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.toUpperCase();
-    if (value.length <= 6) {
-      setCode(value);
-    }
-  };
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      code: codeFromQR || '',
+      email: '',
+      password: '',
+      xtreamUsername: '',
+      xtreamPassword: '',
+    },
+  });
 
-  useEffect(() => {
-    if (code.length === 6) {
-      verifyCode();
-    }
-  }, [code]);
+  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    setIsLoading(true);
 
-  const verifyCode = async () => {
-    setIsVerifying(true);
     try {
-      const response = await fetch(`/api/activation?code=${code}`);
-      const data = await response.json();
-
-      if (response.ok && data.valid) {
-        setVerificationStatus('success');
-        setTimeout(() => {
-          router.push('/profiles');
-        }, 2000);
-      } else {
-        setVerificationStatus('error');
-        setTimeout(() => {
-          setVerificationStatus('idle');
-          setCode('');
-        }, 2000);
+      if (step === 1) {
+        const response = await fetch(`/api/activation?code=${values.code}`);
+        if (response.ok) {
+          setStep(2);
+        }
+      } else if (step === 2) {
+        const response = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: values.email,
+            password: values.password,
+          }),
+        });
+        if (response.ok) {
+          setStep(3);
+        }
+      } else if (step === 3) {
+        const response = await fetch('/api/activation', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: values.code,
+            xtreamUsername: values.xtreamUsername,
+            xtreamPassword: values.xtreamPassword,
+          }),
+        });
+        if (response.ok) {
+          router.push('/profiles/create');
+        }
       }
     } catch (error) {
-      setVerificationStatus('error');
-      setTimeout(() => {
-        setVerificationStatus('idle');
-        setCode('');
-      }, 2000);
+      console.error('Error:', error);
     } finally {
-      setIsVerifying(false);
+      setIsLoading(false);
     }
   };
 
@@ -61,49 +94,152 @@ export default function VerifyPage() {
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-4">Enter TV Code</h1>
-          <p className="text-gray-400">
-            Enter the 6-digit code shown on your dashboard
-          </p>
+          <Tv className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+          <h1 className="text-4xl font-bold mb-2">Connect Your TV</h1>
+          <div className="flex items-center justify-center space-x-2 text-sm text-gray-400">
+            <div className={step >= 1 ? 'text-blue-400' : ''}>Code</div>
+            <ArrowRight className="w-4 h-4" />
+            <div className={step >= 2 ? 'text-blue-400' : ''}>Account</div>
+            <ArrowRight className="w-4 h-4" />
+            <div className={step >= 3 ? 'text-blue-400' : ''}>Playlist</div>
+          </div>
         </div>
 
-        <div className="bg-gray-900 p-8 rounded-lg shadow-xl">
-          <input
-            type="text"
-            value={code}
-            onChange={handleCodeChange}
-            placeholder="XXXXXX"
-            className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-6 text-center text-4xl tracking-[0.5em] font-mono focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            maxLength={6}
-            autoFocus
-          />
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <AnimatePresence mode="wait">
+              {step === 1 && (
+                <motion.div
+                  key="step1"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="bg-gray-900/50 backdrop-blur-sm p-6 rounded-xl space-y-4"
+                >
+                  <FormField
+                    control={form.control}
+                    name="code"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-400">Activation Code</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            placeholder="Enter 6-digit code"
+                            className="bg-gray-800 border-gray-700 text-lg tracking-widest"
+                            maxLength={6}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </motion.div>
+              )}
 
-          <motion.div
-            initial={false}
-            animate={{
-              scale: verificationStatus !== 'idle' ? 1 : 0.8,
-              opacity: verificationStatus !== 'idle' ? 1 : 0
-            }}
-            className="flex justify-center mt-6"
-          >
-            {verificationStatus === 'success' && (
-              <div className="flex items-center text-green-500">
-                <Check className="w-6 h-6 mr-2" />
-                <span>Verification successful!</span>
-              </div>
-            )}
-            {verificationStatus === 'error' && (
-              <div className="flex items-center text-red-500">
-                <X className="w-6 h-6 mr-2" />
-                <span>Invalid code. Please try again.</span>
-              </div>
-            )}
-          </motion.div>
-        </div>
+              {step === 2 && (
+                <motion.div
+                  key="step2"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="bg-gray-900/50 backdrop-blur-sm p-6 rounded-xl space-y-4"
+                >
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-400">Email</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="email"
+                            className="bg-gray-800 border-gray-700"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-400">Password</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="password"
+                            className="bg-gray-800 border-gray-700"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </motion.div>
+              )}
 
-        <p className="text-center mt-6 text-gray-400">
-          The code will expire after 30 minutes
-        </p>
+              {step === 3 && (
+                <motion.div
+                  key="step3"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="bg-gray-900/50 backdrop-blur-sm p-6 rounded-xl space-y-4"
+                >
+                  <FormField
+                    control={form.control}
+                    name="xtreamUsername"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-400">Xtream Username</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            className="bg-gray-800 border-gray-700"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="xtreamPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-gray-400">Xtream Password</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="password"
+                            className="bg-gray-800 border-gray-700"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <Button
+              type="submit"
+              disabled={isLoading}
+              className="w-full bg-white text-black hover:bg-gray-200 transition-colors py-6 text-lg font-medium rounded-xl"
+            >
+              {isLoading ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                step === 3 ? 'Complete Setup' : 'Continue'
+              )}
+            </Button>
+          </form>
+        </Form>
       </motion.div>
     </div>
   );

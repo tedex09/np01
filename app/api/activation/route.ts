@@ -1,35 +1,20 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import User from '@/lib/models/User';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '../auth/[...nextauth]/route';
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { code, xtreamUsername, xtreamPassword } = await req.json();
-
-    await connectDB();
-    const user = await User.findById(session.user.id);
-
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    // Set Xtream credentials
-    user.setXtreamCredentials(xtreamUsername, xtreamPassword);
-    
     // Generate activation code for TV
     const activationCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    user.activationCode = {
-      code: activationCode,
-      expiresAt: new Date(Date.now() + 30 * 60000) // 30 minutes expiration
-    };
-
+    
+    // Store the code temporarily (expires in 30 minutes)
+    await connectDB();
+    const user = new User({
+      activationCode: {
+        code: activationCode,
+        expiresAt: new Date(Date.now() + 30 * 60000) // 30 minutes
+      }
+    });
     await user.save();
 
     return NextResponse.json({ activationCode });
