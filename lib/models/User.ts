@@ -43,6 +43,10 @@ const UserSchema = new Schema({
     type: String, // Encrypted credentials
     required: false
   },
+  xtreamUrl: {
+    type: String,
+    required: false
+  },
   viewingHistory: [{
     contentId: String,
     contentType: {

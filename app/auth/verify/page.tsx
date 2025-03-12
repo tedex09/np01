@@ -17,6 +17,7 @@ import {
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
+import { useAuthStore } from '@/lib/store';
 
 const formSchema = z.object({
   code: z.string().length(6, 'Activation code must be 6 characters'),
@@ -30,6 +31,7 @@ export default function VerifyPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const codeFromQR = searchParams.get('code');
+  const { setAuthenticated } = useAuthStore();
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -45,6 +47,7 @@ export default function VerifyPage() {
 
     try {
       if (step === 1) {
+        // First verify if the code is valid and not already activated
         const response = await fetch(`/api/activation?code=${values.code}`);
         const data = await response.json();
         
@@ -56,18 +59,19 @@ export default function VerifyPage() {
           form.setError('code', { message: 'Invalid or expired code' });
         }
       } else if (step === 2) {
+        // Activate the code and create/login user
         const response = await fetch('/api/activation', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            code: values.code,
-            email: values.email,
-            password: values.password,
-          }),
+          body: JSON.stringify(values),
         });
 
         if (response.ok) {
-          router.push('/profiles');
+          const data = await response.json();
+          if (data.success) {
+            setAuthenticated(true);
+            router.push('/profiles');
+          }
         } else {
           const data = await response.json();
           form.setError('root', { message: data.error });
@@ -121,6 +125,8 @@ export default function VerifyPage() {
                             placeholder="Enter 6-digit code"
                             className="bg-gray-800 border-gray-700 text-lg tracking-widest"
                             maxLength={6}
+                            value={field.value.toUpperCase()}
+                            onChange={(e) => field.onChange(e.target.value.toUpperCase())}
                           />
                         </FormControl>
                         <FormMessage />
@@ -149,6 +155,7 @@ export default function VerifyPage() {
                             {...field}
                             type="email"
                             className="bg-gray-800 border-gray-700"
+                            placeholder="Enter your email"
                           />
                         </FormControl>
                         <FormMessage />
@@ -166,6 +173,7 @@ export default function VerifyPage() {
                             {...field}
                             type="password"
                             className="bg-gray-800 border-gray-700"
+                            placeholder="Enter your password"
                           />
                         </FormControl>
                         <FormMessage />
